@@ -81,6 +81,12 @@
         padding: 1px 10px; font-size: 0.75rem; font-weight: 700; margin-inline-end: 6px; vertical-align: 1px;
       }
       .cap { margin-top: 6px; font-size: 0.85rem; color: var(--indigo); font-weight: 600; }
+      .seg { display: flex; gap: 6px; margin-top: 10px; }
+      .seg-btn {
+        flex: 1; padding: 9px 6px; border: 1px solid var(--line); border-radius: 10px;
+        background: #fff; color: var(--ink); font-weight: 700; font-size: 0.9rem; cursor: pointer;
+      }
+      .seg-btn.active { background: var(--indigo); color: #fff; border-color: var(--indigo); }
       label.field { display: block; font-weight: 600; font-size: 0.9rem; margin: 16px 0 6px; }
       textarea, input[type="password"] {
         width: 100%; color: var(--ink); background: var(--field);
@@ -136,6 +142,10 @@
           </div>
           <input type="file" id="hideFile" hidden />
           <div class="fileinfo" id="hideInfo"></div>
+          <div class="seg hidden" id="imgModeSeg" role="group" aria-label="طريقة الإرسال">
+            <button type="button" class="seg-btn active" id="modeFileBtn">سيفطها كملف</button>
+            <button type="button" class="seg-btn" id="modePhotoBtn">سيفطها كصورة</button>
+          </div>
           <div class="cap" id="capHint"></div>
 
           <textarea id="msgText" placeholder="كتب ميساج هنا" maxlength="100000" aria-label="ميساج"></textarea>
@@ -307,6 +317,142 @@
       throw new Error('ما كاينة حتى رسالة مخبية هنا');
     }
 
+    /* ---------- Mode C: robust DCT (QIM) — survives being sent as a photo ----------
+       The message is written into one mid-frequency DCT coefficient (3,2) of
+       every 8x8 luminance block, with quantization-index modulation (QIM):
+       bit 0 -> nearest multiple of DELTA, bit 1 -> nearest multiple + DELTA/2.
+       Each bit is repeated REPETITION times across blocks and recovered by
+       majority vote, and the payload carries a CRC16 so a damaged message
+       fails cleanly instead of coming out garbled. QIM bounds the change
+       (<= DELTA/2 on one coefficient, ~4 grey levels per pixel), so it never
+       fights the picture content, and JPEG recompression (quality >= 60,
+       incl. WhatsApp/Facebook photo send) moves a coefficient by less than
+       the DELTA/4 decision margin. What it does NOT survive: downscaling
+       (the 8x8 grid moves) — so the app shrinks the carrier to 1600px on
+       its long side first, which is WhatsApp's own maximum, so the platform
+       has nothing left to shrink. Capacity is small: ~1 bit per 8x8 block. */
+    var ROBUST_DELTA = 32;
+    var ROBUST_REP = 9;
+    var ROBUST_U = 3, ROBUST_V = 2;
+    var DCT_COS = (function () {
+      var t = [], u, x;
+      for (u = 0; u < 8; u++) { t[u] = []; for (x = 0; x < 8; x++) t[u][x] = Math.cos(((2 * x + 1) * u * Math.PI) / 16); }
+      return t;
+    })();
+    function dctC(u) { return u === 0 ? 1 / Math.SQRT2 : 1; }
+    function dctCoeff(Y, u, v) {
+      var s = 0, x, y;
+      for (y = 0; y < 8; y++) { var cy = DCT_COS[v][y]; for (x = 0; x < 8; x++) s += Y[y * 8 + x] * DCT_COS[u][x] * cy; }
+      return 0.25 * dctC(u) * dctC(v) * s;
+    }
+    function dctAddDelta(Y, u, v, d) {
+      var k = 0.25 * dctC(u) * dctC(v) * d, x, y;
+      for (y = 0; y < 8; y++) { var cy = DCT_COS[v][y]; for (x = 0; x < 8; x++) Y[y * 8 + x] += k * DCT_COS[u][x] * cy; }
+    }
+    function crc16(bytes) {
+      var crc = 0xffff, i, j;
+      for (i = 0; i < bytes.length; i++) {
+        crc ^= bytes[i] << 8;
+        for (j = 0; j < 8; j++) crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+      }
+      return crc;
+    }
+    function robustCapacityBytes(w, h) {
+      var blocks = Math.floor(w / 8) * Math.floor(h / 8);
+      var bits = Math.floor(blocks / ROBUST_REP);
+      return Math.max(0, Math.floor(bits / 8) - STG_HEADER - 2);
+    }
+    function embedRobust(data, w, h, framed) {
+      var payload = new Uint8Array(framed.length + 2);
+      payload.set(framed, 0);
+      var crc = crc16(framed);
+      payload[framed.length] = crc >> 8;
+      payload[framed.length + 1] = crc & 0xff;
+      var totalBits = payload.length * 8;
+      var blocksX = Math.floor(w / 8), blocksY = Math.floor(h / 8);
+      var nBlocks = blocksX * blocksY;
+      if (totalBits * ROBUST_REP > nBlocks) {
+        throw new Error('هاد الرسالة طويلة بزاف على وضع الصورة — جرّب صورة أكبر ولا رسالة أقصر (السعة ~' +
+          robustCapacityBytes(w, h) + ' حرف). وضع الملف كيخبي رسائل طويلة بزاف.');
+      }
+      var Y = new Float64Array(64);
+      var bitIdx = 0, b, bx, by, x, y;
+      for (b = 0; b < nBlocks && bitIdx < totalBits * ROBUST_REP; b++) {
+        bx = (b % blocksX) * 8; by = Math.floor(b / blocksX) * 8;
+        for (y = 0; y < 8; y++) {
+          var row = (by + y) * w * 4 + bx * 4;
+          for (x = 0; x < 8; x++) {
+            var o = row + x * 4;
+            Y[y * 8 + x] = 0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2];
+          }
+        }
+        var pBit = (payload[((bitIdx / ROBUST_REP) | 0) >> 3] >> (7 - (((bitIdx / ROBUST_REP) | 0) & 7))) & 1;
+        var f = dctCoeff(Y, ROBUST_U, ROBUST_V);
+        var target = ROBUST_DELTA * Math.round((f - pBit * ROBUST_DELTA / 2) / ROBUST_DELTA) + pBit * ROBUST_DELTA / 2;
+        var d = target - f;
+        if (Math.abs(d) > 0.01) {
+          dctAddDelta(Y, ROBUST_U, ROBUST_V, d);
+          for (y = 0; y < 8; y++) {
+            var row2 = (by + y) * w * 4 + bx * 4;
+            for (x = 0; x < 8; x++) {
+              var o2 = row2 + x * 4;
+              var orig = 0.299 * data[o2] + 0.587 * data[o2 + 1] + 0.114 * data[o2 + 2];
+              var dd = Y[y * 8 + x] - orig; /* same shift on R,G,B: luma moves, chroma stays */
+              data[o2] = Math.max(0, Math.min(255, Math.round(data[o2] + dd)));
+              data[o2 + 1] = Math.max(0, Math.min(255, Math.round(data[o2 + 1] + dd)));
+              data[o2 + 2] = Math.max(0, Math.min(255, Math.round(data[o2 + 2] + dd)));
+            }
+          }
+        }
+        bitIdx++;
+      }
+      return data;
+    }
+    function extractRobust(data, w, h) {
+      var blocksX = Math.floor(w / 8), blocksY = Math.floor(h / 8);
+      var nBlocks = blocksX * blocksY;
+      var rawBits = new Uint8Array(nBlocks);
+      var Y = new Float64Array(64);
+      var b, bx, by, x, y;
+      for (b = 0; b < nBlocks; b++) {
+        bx = (b % blocksX) * 8; by = Math.floor(b / blocksX) * 8;
+        for (y = 0; y < 8; y++) {
+          var row = (by + y) * w * 4 + bx * 4;
+          for (x = 0; x < 8; x++) {
+            var o = row + x * 4;
+            Y[y * 8 + x] = 0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2];
+          }
+        }
+        var f = dctCoeff(Y, ROBUST_U, ROBUST_V);
+        var d0 = Math.abs(f - ROBUST_DELTA * Math.round(f / ROBUST_DELTA));
+        var d1 = Math.abs(f - (ROBUST_DELTA * Math.round((f - ROBUST_DELTA / 2) / ROBUST_DELTA) + ROBUST_DELTA / 2));
+        rawBits[b] = d0 <= d1 ? 0 : 1;
+      }
+      function votedByte(byteIdx) {
+        var byte = 0, bit, r, ones, base;
+        for (bit = 0; bit < 8; bit++) {
+          ones = 0; base = (byteIdx * 8 + bit) * ROBUST_REP;
+          for (r = 0; r < ROBUST_REP; r++) ones += rawBits[base + r];
+          byte = (byte << 1) | (ones * 2 > ROBUST_REP ? 1 : 0);
+        }
+        return byte;
+      }
+      var head = new Uint8Array(STG_HEADER), k;
+      for (k = 0; k < STG_HEADER; k++) head[k] = votedByte(k);
+      if (!hasMagic(head, 0)) throw new Error('ما كاينة حتى رسالة مخبية هنا');
+      var len = new DataView(head.buffer).getUint32(5, true);
+      var total = STG_HEADER + len + 2;
+      if (total * 8 * ROBUST_REP > nBlocks) throw new Error('ما كاينة حتى رسالة مخبية هنا');
+      var out = new Uint8Array(total);
+      out.set(head, 0);
+      for (k = STG_HEADER; k < total; k++) out[k] = votedByte(k);
+      var crcRead = (out[total - 2] << 8) | out[total - 1];
+      if (crcRead !== crc16(out.slice(0, total - 2))) {
+        throw new Error('الرسالة تضررات فالطريق — عاود سيفط الصورة');
+      }
+      return out.slice(0, STG_HEADER + len);
+    }
+
     /* ---------- Encryption (AES-256-GCM, PBKDF2-SHA-256 100k) ---------- */
     function deriveKey(password, salt, usages) {
       return crypto.subtle.importKey('raw', utf8Encode(password), 'PBKDF2', false, ['deriveKey'])
@@ -352,6 +498,7 @@
     globalThis.Stego = {
       framePayload: framePayload, unframePayload: unframePayload,
       embedLSB: embedLSB, extractLSB: extractLSB, lsbCapacityBytes: lsbCapacityBytes,
+      embedRobust: embedRobust, extractRobust: extractRobust, robustCapacityBytes: robustCapacityBytes,
       appendPayload: appendPayload, extractAppended: extractAppended,
       encryptBody: encryptBody, decryptBody: decryptBody,
       HEADER_LEN: STG_HEADER
@@ -412,9 +559,19 @@
       }
 
       var hideKind = null;    /* 'image' | 'file' | null (auto-detected) */
+      var hideMode = 'file';  /* image only: 'file' = LSB (Document, big) | 'photo' = robust DCT */
       var hideImage = null;   /* {imageData, canvas, name} */
       var hideCarrier = null; /* {bytes:Uint8Array, name, type} */
       var revealFileObj = null;
+
+      function setHideMode(mode) {
+        hideMode = mode;
+        $('modeFileBtn').classList.toggle('active', mode === 'file');
+        $('modePhotoBtn').classList.toggle('active', mode === 'photo');
+        updateCapHint(); updateButtons();
+      }
+      $('modeFileBtn').addEventListener('click', function () { setHideMode('file'); });
+      $('modePhotoBtn').addEventListener('click', function () { setHideMode('photo'); });
 
       /* ---------- Drop zones ---------- */
       function wireDrop(zone, input, onFile) {
@@ -438,9 +595,16 @@
       function updateCapHint() {
         var el = $('capHint');
         if (hideKind === 'image' && hideImage) {
-          var cap = lsbCapacityBytes(hideImage.imageData.width * hideImage.imageData.height);
-          var plain = Math.max(0, cap - STG_HEADER);
-          el.textContent = 'تقدر تخبي حتى ~' + plain.toLocaleString() + ' حرف';
+          var pwOverhead = $('hidePassword').value ? 44 : 0; /* salt+iv+tag when encrypted */
+          if (hideMode === 'photo') {
+            var rcap = robustCapacityBytes(hideImage.imageData.width, hideImage.imageData.height);
+            var rplain = Math.max(0, rcap - pwOverhead);
+            el.textContent = 'كصورة: تقدر تخبي حتى ~' + rplain.toLocaleString() + ' حرف — كتبقى خدامة وخا تسيفطها كصورة';
+          } else {
+            var cap = lsbCapacityBytes(hideImage.imageData.width * hideImage.imageData.height);
+            var plain = Math.max(0, cap - STG_HEADER - pwOverhead);
+            el.textContent = 'تقدر تخبي حتى ~' + plain.toLocaleString() + ' حرف';
+          }
         } else { el.textContent = ''; }
       }
       function updateCount() {
@@ -461,6 +625,8 @@
             hideImage = { imageData: res.imageData, canvas: res.canvas, name: file.name };
             var prev = $('hidePreview');
             prev.src = res.previewUrl; prev.style.display = 'block';
+            $('imgModeSeg').classList.remove('hidden');
+            setHideMode('file');
             showInfo($('hideInfo'), 'صورة', file.name,
               ' — ' + res.imageData.width + ' × ' + res.imageData.height + ' · ' + fmtBytes(file.size));
             updateCapHint(); updateButtons();
@@ -473,6 +639,7 @@
             hideKind = 'file'; hideImage = null;
             hideCarrier = { bytes: new Uint8Array(ab), name: file.name, type: file.type || 'application/octet-stream' };
             $('hidePreview').style.display = 'none';
+            $('imgModeSeg').classList.add('hidden');
             showInfo($('hideInfo'), 'ملف', file.name, ' — ' + fmtBytes(file.size));
             updateCapHint(); updateButtons();
           }).catch(function () {
@@ -483,6 +650,7 @@
       }
       wireDrop($('hideDrop'), $('hideFile'), onHideFile);
       $('msgText').addEventListener('input', updateCount);
+      $('hidePassword').addEventListener('input', updateCapHint);
 
       $('btnHide').addEventListener('click', function () {
         var text = $('msgText').value;
@@ -494,6 +662,30 @@
           var framed = framePayload(enc.body, enc.encrypted);
           if (hideKind === 'image') {
             if (!hideImage) throw new Error('اختار ملف أولاً');
+            if (hideMode === 'photo') {
+              /* Robust mode: shrink the carrier to 1600px on its long side
+                 first — that is WhatsApp's own maximum, so the platform has
+                 nothing left to shrink (downscaling would move the 8x8 grid
+                 and kill the message). Then embed with DCT/QIM. */
+              var srcW = hideImage.imageData.width, srcH = hideImage.imageData.height;
+              var scale = Math.min(1, 1600 / Math.max(srcW, srcH));
+              var rCanvas = document.createElement('canvas');
+              rCanvas.width = Math.max(8, Math.round(srcW * scale));
+              rCanvas.height = Math.max(8, Math.round(srcH * scale));
+              var rCtx = rCanvas.getContext('2d');
+              rCtx.drawImage(hideImage.canvas, 0, 0, rCanvas.width, rCanvas.height);
+              var rData = rCtx.getImageData(0, 0, rCanvas.width, rCanvas.height);
+              var rCopy = new Uint8ClampedArray(rData.data);
+              embedRobust(rCopy, rCanvas.width, rCanvas.height, framed); /* throws a clear error when too big */
+              rCtx.putImageData(new ImageData(rCopy, rCanvas.width, rCanvas.height), 0, 0);
+              rCanvas.toBlob(function (blob) {
+                if (!blob) { setStatus($('hideStatus'), 'ما قدرناش نصايبو PNG', 'err'); $('btnHide').disabled = false; return; }
+                downloadBlob(blob, stegoName(hideImage.name, true));
+                setStatus($('hideStatus'), 'تخبات الرسالة — سيفط الصورة كصورة عادي، غتبقى خدامة', 'ok');
+                $('btnHide').disabled = false;
+              }, 'image/png');
+              return;
+            }
             var copy = new Uint8ClampedArray(hideImage.imageData.data);
             embedLSB(copy, framed); /* throws a clear capacity error when too big */
             var ctx = hideImage.canvas.getContext('2d');
@@ -536,11 +728,14 @@
         $('revealResult').classList.remove('show');
         var framedPromise;
         if (isImageFile(file)) {
-          /* Image: try the pixels (LSB) first, then an appended block in the same file. */
+          /* Image: LSB pixels first, then robust DCT, then an appended block. */
           framedPromise = loadImageFile(file).then(function (res) {
             try { return extractLSB(res.imageData.data); }
-            catch (e) {
-              return file.arrayBuffer().then(function (ab) { return extractAppended(new Uint8Array(ab)); });
+            catch (e1) {
+              try { return extractRobust(res.imageData.data, res.imageData.width, res.imageData.height); }
+              catch (e2) {
+                return file.arrayBuffer().then(function (ab) { return extractAppended(new Uint8Array(ab)); });
+              }
             }
           }, function () {
             return file.arrayBuffer().then(function (ab) { return extractAppended(new Uint8Array(ab)); });
