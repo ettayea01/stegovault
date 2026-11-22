@@ -6,6 +6,9 @@ Everything runs locally in the browser: no server, no uploads, works fully offli
 
 **Live:** https://ettayea01.github.io/stegovault/
 
+**UI:** Moroccan Darija (Arabic script, RTL) and intentionally basic — one file
+button per card; the app auto-detects images (LSB mode) vs other files (append mode).
+
 ## The two modes
 
 ### 1 · Image (PNG, LSB)
@@ -28,11 +31,11 @@ normally. The download keeps the original name plus a `-stego` suffix
 
 ## How to use
 
-**Hide:** choose the mode → drop in the carrier → type your message → optionally
-set a password → **Hide & Download**.
+**Hide:** drop in any carrier file (auto-detected) → type your message →
+optionally set a password → **Hide & Download**.
 
-**Reveal:** choose the same mode → drop in the StegoVault file → enter the
-password if one was set → **Reveal message** → read or copy it.
+**Reveal:** drop in the StegoVault file → enter the password if one was set →
+**Reveal message** → read or copy it.
 
 ## Honest limits — read this before sending
 
