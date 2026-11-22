@@ -3,42 +3,27 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="description" content="StegoVault — خبي رسائل سرية داخل صور وملفات واستخرجها، بكلمة سر إلا بغيتي." />
-    <meta name="theme-color" content="#F5F6FA" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0B1020" media="(prefers-color-scheme: dark)" />
-    <meta name="color-scheme" content="light dark" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366F1'/%3E%3Cstop offset='1' stop-color='%238B5CF6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Cpath d='M6 32c7-11 16-16 26-16s19 5 26 16c-7 11-16 16-26 16S13 43 6 32z' fill='none' stroke='white' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='7' fill='white'/%3E%3C/svg%3E" />
-    <title>StegoVault</title>
+    <meta name="description" content="خزن ميساج — خزن رسائل سرية داخل صور وملفات وخرجها، بكلمة سر إلا بغيتي." />
+    <meta name="theme-color" content="#FFFFFF" />
+    <meta name="color-scheme" content="light" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23111827'/%3E%3Cstop offset='1' stop-color='%23111827'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Cpath d='M6 32c7-11 16-16 26-16s19 5 26 16c-7 11-16 16-26 16S13 43 6 32z' fill='none' stroke='white' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='7' fill='white'/%3E%3C/svg%3E" />
+    <title>خزن ميساج</title>
     <style>
       * { box-sizing: border-box; }
       :root {
-        --bg: #F5F6FA;
+        --bg: #FFFFFF;
         --card: #FFFFFF;
-        --card-2: #EEF0F7;
-        --ink: #14161F;
-        --muted: #5B6070;
-        --line: rgba(20, 22, 31, 0.10);
+        --card-2: #F7F7F8;
+        --ink: #111827;
+        --muted: #6B7280;
+        --line: #E5E7EB;
         --field: #FFFFFF;
-        --indigo: #6366F1;
-        --violet: #8B5CF6;
+        --indigo: #111827;
+        --violet: #111827;
         --ok: #16A34A;
         --danger: #DC2626;
-        --shadow: 0 12px 32px rgba(30, 27, 75, 0.08), 0 2px 6px rgba(30, 27, 75, 0.05);
-        --grad: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0B1020;
-          --card: #131830;
-          --card-2: #171D38;
-          --ink: #EEF0FF;
-          --muted: #9AA3C0;
-          --line: rgba(238, 240, 255, 0.12);
-          --field: #0E1330;
-          --ok: #4ADE80;
-          --danger: #F87171;
-          --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-        }
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --grad: #111827;
       }
       html { -webkit-text-size-adjust: 100%; }
       body {
@@ -47,7 +32,7 @@
         font-size: 16px; line-height: 1.55;
       }
       button, input, textarea { font: inherit; }
-      :focus-visible { outline: 3px solid rgba(99, 102, 241, 0.55); outline-offset: 2px; border-radius: 6px; }
+      :focus-visible { outline: 3px solid rgba(17, 24, 39, 0.45); outline-offset: 2px; border-radius: 6px; }
 
       /* ---------- Header ---------- */
       header {
@@ -96,7 +81,6 @@
         padding: 1px 10px; font-size: 0.75rem; font-weight: 700; margin-inline-end: 6px; vertical-align: 1px;
       }
       .cap { margin-top: 6px; font-size: 0.85rem; color: var(--indigo); font-weight: 600; }
-      @media (prefers-color-scheme: dark) { .cap { color: #A5B4FC; } }
       label.field { display: block; font-weight: 600; font-size: 0.9rem; margin: 16px 0 6px; }
       textarea, input[type="password"] {
         width: 100%; color: var(--ink); background: var(--field);
@@ -110,7 +94,7 @@
         display: inline-flex; align-items: center; justify-content: center; gap: 8px;
         transition: filter 0.15s ease, opacity 0.15s ease;
       }
-      .btn-primary { border: 0; background: var(--grad); color: #fff; box-shadow: 0 6px 18px rgba(99, 102, 241, 0.32); width: 100%; margin-top: 18px; }
+      .btn-primary { border: 0; background: var(--grad); color: #fff; width: 100%; margin-top: 18px; }
       .btn-primary:hover { filter: brightness(1.08); }
       .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; filter: none; box-shadow: none; }
       .btn-ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
@@ -134,8 +118,7 @@
     <header>
       <div class="header-in">
         <div class="logo">
-          <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366F1"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#lg)"/><path d="M6 32c7-11 16-16 26-16s19 5 26 16c-7 11-16 16-26 16S13 43 6 32z" fill="none" stroke="white" stroke-width="4"/><circle cx="32" cy="32" r="7" fill="white"/></svg>
-          Stego<span class="grad-text">Vault</span>
+          <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#111827"/><stop offset="1" stop-color="#111827"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#lg)"/><path d="M6 32c7-11 16-16 26-16s19 5 26 16c-7 11-16 16-26 16S13 43 6 32z" fill="none" stroke="white" stroke-width="4"/><circle cx="32" cy="32" r="7" fill="white"/></svg>
         </div>
       </div>
     </header>
@@ -144,7 +127,7 @@
       <div class="grid">
         <!-- ==================== HIDE ==================== -->
         <div class="card">
-          <h2><span class="step">1</span>خبي رسالة</h2>
+          <h2><span class="step">1</span>خزن ميساج</h2>
 
           <div class="drop" id="hideDrop" role="button" tabindex="0" aria-label="اختار ملف">
             <div class="big" id="hideDropBig">اختار ملف</div>
@@ -155,19 +138,19 @@
           <div class="fileinfo" id="hideInfo"></div>
           <div class="cap" id="capHint"></div>
 
-          <textarea id="msgText" placeholder="كتب رسالتك السرية…" maxlength="100000" aria-label="الرسالة السرية"></textarea>
+          <textarea id="msgText" placeholder="كتب ميساج هنا" maxlength="100000" aria-label="ميساج"></textarea>
           <div class="count" id="charCount">0 حرف</div>
 
           <label class="field" for="hidePassword">كلمة السر (اختيارية)</label>
           <input type="password" id="hidePassword" autocomplete="new-password" />
 
-          <button class="btn btn-primary" id="btnHide" type="button" disabled>خبي وحمّل</button>
+          <button class="btn btn-primary" id="btnHide" type="button" disabled>خزن وحمّل</button>
           <p class="status" id="hideStatus"></p>
         </div>
 
         <!-- ==================== REVEAL ==================== -->
         <div class="card">
-          <h2><span class="step">2</span>استخرج رسالة</h2>
+          <h2><span class="step">2</span>خرج ميساج</h2>
 
           <div class="drop" id="revealDrop" role="button" tabindex="0" aria-label="اختار ملف">
             <div class="big" id="revealDropBig">اختار ملف</div>
@@ -179,7 +162,7 @@
           <label class="field" for="revealPassword">كلمة السر</label>
           <input type="password" id="revealPassword" autocomplete="current-password" />
 
-          <button class="btn btn-primary" id="btnReveal" type="button" disabled>استخرج</button>
+          <button class="btn btn-primary" id="btnReveal" type="button" disabled>خرج</button>
           <p class="status" id="revealStatus"></p>
 
           <div class="result" id="revealResult">
@@ -189,8 +172,6 @@
         </div>
       </div>
     </div>
-
-    <footer>StegoVault</footer>
 
     <script>
     'use strict';
